@@ -1194,6 +1194,12 @@ class GlancesStats:
         # Return the sorted list
         return listsorted
 
+    def getProcessDetail(self, pid):
+        # Return the process detail as a hashable dictionary
+        # !!! Only return necessary information for the detail panel
+        # !!! Default dictionary is huge...
+        return psutil.Process(pid).as_dict()
+
     def getNow(self):
         return self.now
 
@@ -1320,6 +1326,7 @@ class glancesScreen:
         self.now_y = 3
         self.caption_x = 0
         self.caption_y = 3
+        self.process_detail_ysize = 12
 
         # Init the curses screen
         self.screen = curses.initscr()
@@ -1418,9 +1425,20 @@ class glancesScreen:
         self.help_tag = False
         self.percpu_tag = False
         self.net_byteps_tag = network_bytepersec_tag
+        self.process_detail = False
 
         # Init main window
         self.term_window = self.screen.subwin(0, 0)
+        
+        # Init the pad for process list (linemax, colmax)
+        # !!! Init value: (linemax, colmax)
+        self.term_pad_process = curses.newpad(1024, 1024)
+        self.term_pad_process_detail = curses.newpad(self.process_detail_ysize, 1024)
+        # Scroll global var
+        # Set the process to highlight
+        self.process_highlight = 0
+        # Set the first process to display
+        self.process_scroll = 0
 
         # Init refresh time
         self.__refresh_time = refresh_time
@@ -1717,6 +1735,25 @@ class glancesScreen:
         elif self.pressedkey == 120:
             # 'x' > Delete finished warning and critical logs
             logs.clean(critical=True)
+        elif self.pressedkey == curses.KEY_DOWN and self.process_highlight < self.processcount['total']:
+            # DOWN: Scroll down through the process list
+            self.process_highlight += 1
+            screen_y = self.screen.getmaxyx()[0]
+            if (self.process_highlight >= (self.processcount2display / 2)):
+                self.process_scroll += 1
+        elif self.pressedkey == curses.KEY_UP and self.process_highlight > 0:
+            # UP: Scroll up through the process list
+            self.process_highlight -= 1
+            screen_y = self.screen.getmaxyx()[0]
+            if (self.process_highlight >= (self.processcount2display / 2) - 1):
+                self.process_scroll -= 1
+        elif self.pressedkey == curses.KEY_LEFT:
+            # LEFT: Begin of the process list
+            self.process_highlight  = 0
+            self.process_scroll = 0
+        elif self.pressedkey == 10:
+            # ENTER: Show process detail
+            self.process_detail = not self.process_detail
 
         # Return the key code
         return self.pressedkey
@@ -1738,8 +1775,12 @@ class glancesScreen:
         """
 
         # Get stats for processes (used in another functions for logs)
-        processcount = stats.getProcessCount()
+        self.processcount = stats.getProcessCount()
         processlist = stats.getProcessList(screen.getProcessSortedBy())
+        try:
+            processdetail = stats.getProcessDetail(processlist[self.process_highlight]['pid'])
+        except IndexError:
+            processdetail = None
 
         # Display stats
         self.displaySystem(stats.getHost(), stats.getSystem())
@@ -1756,7 +1797,8 @@ class glancesScreen:
                                   network_count + diskio_count)
         log_count = self.displayLog(self.network_y + sensors_count + network_count +
                                     diskio_count + fs_count)
-        self.displayProcess(processcount, processlist, stats.getSortedBy(),
+        self.processcount2display = self.displayProcess(self.processcount, 
+                            processlist, processdetail, stats.getSortedBy(),
                             log_count=log_count, core=stats.getCore())
         self.displayCaption(cs_status=cs_status)
         self.displayNow(stats.getNow())
@@ -1765,6 +1807,8 @@ class glancesScreen:
     def erase(self):
         # Erase the content of the screen
         self.term_window.erase()
+        self.term_pad_process.erase()
+        self.term_pad_process_detail.erase()
 
     def flush(self, stats, cs_status="None"):
         """
@@ -1774,7 +1818,7 @@ class glancesScreen:
             "Connected": Client is connected to the server
             "Disconnected": Client is disconnected from the server
         """
-             # Flush display
+                
         self.erase()
         self.display(stats, cs_status=cs_status)
 
@@ -1797,6 +1841,21 @@ class glancesScreen:
             if self.__catchKey() > -1:
                 # flush display
                 self.flush(stats, cs_status=cs_status)
+
+            # Display the pad
+            screen_x = self.screen.getmaxyx()[1]
+            if self.process_detail:
+                # Display detail of the selected process
+                self.term_pad_process_detail.refresh(0, 0, 
+                                              self.process_y + 3, self.process_x, 
+                                              self.process_detail_ysize, screen_x - 1)                
+            else:
+                # Display the processes list
+                if self.processcount2display != 0:
+                    self.term_pad_process.refresh(self.process_scroll, 0, 
+                                                  self.process_y + 3, self.process_x, 
+                                                  self.process_y + 3 + self.processcount2display, screen_x - 1)
+
             # Wait 100ms...
             curses.napms(100)
 
@@ -2421,7 +2480,11 @@ class glancesScreen:
         else:
             return 0
 
-    def displayProcess(self, processcount, processlist, sortedby='', log_count=0, core=1):
+    def displayProcess(self, processcount, processlist, processdetail, 
+                       sortedby='', log_count=0, core=1):
+        """
+        Main function for displaying the processes information
+        """
         # Process
         if not processcount:
             return 0
@@ -2467,8 +2530,21 @@ class glancesScreen:
             screen_x > process_x + 49 + len(sortmsg)):
             self.term_window.addnstr(self.process_y, 76, sortmsg, len(sortmsg))
 
-        # Processes detail
+        # Processes
         if screen_y > self.process_y + 4 and screen_x > process_x + 49:
+                        
+            # Display optionnal description for the process panel
+            process2display = screen_y - self.process_y - log_count - 5
+            if (self.process_scroll > 0):
+                # In list mode, only displayed if scroll
+                self.term_window.addnstr(
+                        self.process_y + 1, process_x + 10,
+                        _('Show processes from {0} to {1}').format(
+                            str(self.process_scroll + 1), 
+                            str(self.process_scroll + process2display)), 
+                        42)
+
+            # Displayed information / window size
             tag_pid = False
             tag_uid = False
             tag_nice = False
@@ -2566,123 +2642,192 @@ class glancesScreen:
                                          _("Compute data..."), 15)
                 return 6
 
-            # Display the processes list
-            proc_num = min(screen_y - self.term_h +
-                           self.process_y - log_count + 5,
-                           len(processlist))
-            for processes in range(0, proc_num):
-                # VMS
-                process_size = processlist[processes]['memory_info'][1]
-                self.term_window.addnstr(
-                    self.process_y + 3 + processes, process_x,
-                    format(self.__autoUnit(process_size), '>5'), 5)
-                # RSS
-                process_resident = processlist[processes]['memory_info'][0]
-                self.term_window.addnstr(
-                    self.process_y + 3 + processes, process_x + 6,
-                    format(self.__autoUnit(process_resident), '>5'), 5)
-                # CPU%
-                cpu_percent = processlist[processes]['cpu_percent']
-                self.term_window.addnstr(
-                    self.process_y + 3 + processes, process_x + 12,
-                    format(cpu_percent, '>5.1f'), 5,
-                    self.__getProcessCpuColor2(cpu_percent, core=core))
-                # MEM%
-                memory_percent = processlist[processes]['memory_percent']
-                self.term_window.addnstr(
-                    self.process_y + 3 + processes, process_x + 18,
-                    format(memory_percent, '>5.1f'), 5,
-                    self.__getProcessMemColor2(memory_percent))
-                # If screen space (X) is available then:
-                # PID
-                if tag_pid:
-                    pid = processlist[processes]['pid']
-                    self.term_window.addnstr(
-                        self.process_y + 3 + processes, process_x + 24,
-                        format(str(pid), '>5'), 5)
-                # UID
-                if tag_uid:
-                    uid = processlist[processes]['username']
-                    self.term_window.addnstr(
-                        self.process_y + 3 + processes, process_x + 30,
-                        str(uid), 9)
-                # NICE
-                if tag_nice:
-                    nice = processlist[processes]['nice']
-                    self.term_window.addnstr(
-                        self.process_y + 3 + processes, process_x + 41,
-                        format(str(nice), '>3'), 3)
-                # STATUS
-                if tag_status:
-                    status = processlist[processes]['status']
-                    self.term_window.addnstr(
-                        self.process_y + 3 + processes, process_x + 45,
-                        str(status), 1)
-                # TIME+
-                if tag_proc_time:
-                    process_time = processlist[processes]['cpu_times']
-                    try:
-                        dtime = timedelta(seconds=sum(process_time))
-                    except:
-                        # Catched on some Amazon EC2 server
-                        # See https://github.com/nicolargo/glances/issues/87
-                        tag_proc_time = False
-                    else:
-                        dtime = "{0}:{1}.{2}".format(
-                                    str(dtime.seconds // 60 % 60),
-                                    str(dtime.seconds % 60).zfill(2),
-                                    str(dtime.microseconds)[:2].zfill(2))
-                        self.term_window.addnstr(
-                            self.process_y + 3 + processes, process_x + 47,
-                            format(dtime, '>8'), 8)
-                # IO
-                # Hack to allow client 1.6 to connect to server 1.5.2
+            # ... else display
+            if self.process_detail:
+                # Display process detail in the <pad>
+                self.displayProcessDetail(processlist[self.process_highlight], processdetail, 
+                                    self.term_pad_process_detail,
+                                    process_x, process_name_x, core = core,
+                                    tag_pid = tag_pid, tag_uid = tag_uid,
+                                    tag_nice = tag_nice, tag_status = tag_status,
+                                    tag_proc_time = tag_proc_time, tag_io = tag_io)
+            else:
+                # Display the processes list in the <pad>
+                for process_cpt in range(0, len(processlist)):
+                    self.displayProcessSumary(processlist[process_cpt], process_cpt, self.term_pad_process, 
+                                        process_x, process_name_x, core = core,
+                                        tag_pid = tag_pid, tag_uid = tag_uid,
+                                        tag_nice = tag_nice, tag_status = tag_status,
+                                        tag_proc_time = tag_proc_time, tag_io = tag_io)
+                
+
+        else:
+            # No process to display
+            return 0
+        
+        # Return the number of processes to display
+        return process2display
+
+    def displayProcessDetail(self, process, detail, pad,
+                             process_x, process_name_x, core = 1,
+                             tag_pid = False, tag_uid = False, 
+                             tag_nice = False, tag_status = False, 
+                             tag_proc_time = False, tag_io = False):
+        """
+        Display the <process> <detail> in the <pad>
+        Input:
+        * process is a pointer to the selected process in the list
+        * detail is a PsUtil as_dict() hashable dictionary
+        * pad is the dedicated process detail curses' pad
+        Output
+        Return the number of lines filled in the <pad>
+        """
+        
+        # On the first line display the process sumary 
+        self.displayProcessSumary(process, 0, pad, 
+                            process_x, process_name_x, core = core,
+                            tag_highlight = False,
+                            tag_pid = tag_pid, tag_uid = tag_uid,
+                            tag_nice = tag_nice, tag_status = tag_status,
+                            tag_proc_time = tag_proc_time, tag_io = tag_io)        
+
+        # Then the extended (detail) information
+        pad.addnstr(1, 0,
+                  "{0}".format(str(detail))
+                  , 40)        
+                        
+        # Return the number of line in the <pad>
+        return 3
+
+    def displayProcessSumary(self, process, line, pad,
+                             process_x, process_name_x, core = 1,
+                             tag_highlight = True,
+                             tag_pid = False, tag_uid = False, 
+                             tag_nice = False, tag_status = False, 
+                             tag_proc_time = False, tag_io = False):
+        """
+        Display the <process> sumary on the y <line> of the <pad> 
+        """
+
+        screen_x = self.screen.getmaxyx()[1]
+
+        # Highlight selected process
+        if ((line == self.process_highlight) and tag_highlight):
+            style = curses.A_REVERSE
+        else:
+            style = 0
+        # VMS
+        process_size = process['memory_info'][1]
+        pad.addnstr(
+            line, 0,
+            format(self.__autoUnit(process_size), '>5'), 5)
+        # RSS
+        process_resident = process['memory_info'][0]
+        pad.addnstr(
+            line, 6,
+            format(self.__autoUnit(process_resident), '>5'), 5)
+        # CPU%
+        cpu_percent = process['cpu_percent']
+        pad.addnstr(
+            line, 12,
+            format(cpu_percent, '>5.1f'), 5,
+            self.__getProcessCpuColor2(cpu_percent, core=core))
+        # MEM%
+        memory_percent = process['memory_percent']
+        pad.addnstr(
+            line, 18,
+            format(memory_percent, '>5.1f'), 5,
+            self.__getProcessMemColor2(memory_percent))
+        # If screen space (X) is available then:
+        # PID
+        if tag_pid:
+            pid = process['pid']
+            pad.addnstr(
+                line, 24,
+                format(str(pid), '>5'), 5)
+        # UID
+        if tag_uid:
+            uid = process['username']
+            pad.addnstr(
+                line, 30,
+                str(uid), 9)
+        # NICE
+        if tag_nice:
+            nice = process['nice']
+            pad.addnstr(
+                line, 41,
+                format(str(nice), '>3'), 3)
+        # STATUS
+        if tag_status:
+            status = process['status']
+            pad.addnstr(
+                line, 45,
+                str(status), 1)
+        # TIME+
+        if tag_proc_time:
+            process_time = process['cpu_times']
+            try:
+                dtime = timedelta(seconds=sum(process_time))
+            except:
+                # Catched on some Amazon EC2 server
+                # See https://github.com/nicolargo/glances/issues/87
+                tag_proc_time = False
+            else:
+                dtime = "{0}:{1}.{2}".format(
+                            str(dtime.seconds // 60 % 60),
+                            str(dtime.seconds % 60).zfill(2),
+                            str(dtime.microseconds)[:2].zfill(2))
+                pad.addnstr(
+                    line, 47,
+                    format(dtime, '>8'), 8)
+        # IO
+        # Hack to allow client 1.6 to connect to server 1.5.2
+        process_tag_io = True
+        try:
+            if process['io_counters'][4] == 0:
                 process_tag_io = True
-                try:
-                    if processlist[processes]['io_counters'][4] == 0:
-                        process_tag_io = True
-                except:
-                    process_tag_io = False
-                if tag_io:
-                    if not process_tag_io:
-                        # If io_tag == 0 (['io_counters'][4])
-                        # then do not diplay IO rate
-                        self.term_window.addnstr(
-                            self.process_y + 3 + processes, process_x + 56,
-                            format("?", '>5'), 5)
-                        self.term_window.addnstr(
-                            self.process_y + 3 + processes, process_x + 62,
-                            format("?", '>5'), 5)
-                    else:
-                        # If io_tag == 1 (['io_counters'][4])
-                        # then diplay IO rate
-                        io_read = processlist[processes]['io_counters'][0]
-                        io_read_old = processlist[processes]['io_counters'][2]
-                        io_write = processlist[processes]['io_counters'][1]
-                        io_write_old = processlist[processes]['io_counters'][3]
-                        elapsed_time = max(1, self.__refresh_time)
-                        io_rs = (io_read - io_read_old) / elapsed_time
-                        io_ws = (io_write - io_write_old) / elapsed_time
-                        self.term_window.addnstr(
-                            self.process_y + 3 + processes, process_x + 56,
-                            format(self.__autoUnit(io_rs), '>5'), 5)
-                        self.term_window.addnstr(
-                            self.process_y + 3 + processes, process_x + 62,
-                            format(self.__autoUnit(io_ws), '>5'), 5)
+        except:
+            process_tag_io = False
+        if tag_io:
+            if not process_tag_io:
+                # If io_tag == 0 (['io_counters'][4])
+                # then do not diplay IO rate
+                pad.addnstr(
+                    line, 56,
+                    format("?", '>5'), 5)
+                pad.addnstr(
+                    line, 62,
+                    format("?", '>5'), 5)
+            else:
+                # If io_tag == 1 (['io_counters'][4])
+                # then diplay IO rate
+                io_read = process['io_counters'][0]
+                io_read_old = process['io_counters'][2]
+                io_write = process['io_counters'][1]
+                io_write_old = process['io_counters'][3]
+                elapsed_time = max(1, self.__refresh_time)
+                io_rs = (io_read - io_read_old) / elapsed_time
+                io_ws = (io_write - io_write_old) / elapsed_time
+                pad.addnstr(
+                    line, 56,
+                    format(self.__autoUnit(io_rs), '>5'), 5)
+                pad.addnstr(
+                    line, 62,
+                    format(self.__autoUnit(io_ws), '>5'), 5)
 
-                # display process command line
-                max_process_name = screen_x - process_x - process_name_x
-                process_name = processlist[processes]['name']
-                process_cmdline = processlist[processes]['cmdline']
-                if (len(process_cmdline) > max_process_name or
-                    len(process_cmdline) == 0):
-                    command = process_name
-                else:
-                    command = process_cmdline
-                self.term_window.addnstr(self.process_y + 3 + processes,
-                                         process_x + process_name_x,
-                                         command, max_process_name)
-
+        # display process command line
+        max_process_name = screen_x - process_x - process_name_x
+        process_name = process['name']
+        process_cmdline = process['cmdline']
+        if (len(process_cmdline) > max_process_name or
+            len(process_cmdline) == 0):
+            command = process_name
+        else:
+            command = process_cmdline
+        pad.addnstr(line, process_name_x,
+                                      command, max_process_name,
+                                      style)
+        
     def displayCaption(self, cs_status="None"):
         """
         Display the caption (bottom left)
