@@ -1197,9 +1197,13 @@ class GlancesStats:
 
     def getProcessDetail(self, pid):
         # Return the process detail as a hashable dictionary
-        # !!! Only return necessary information for the detail panel
-        # !!! Default dictionary is huge...
-        return psutil.Process(pid).as_dict()
+        try:
+            # !!! Only return necessary information for the detail panel
+            # !!! Default dictionary is huge...
+            detail = psutil.Process(pid).as_dict()
+        except psutil.error.NoSuchProcess:
+            detail = None
+        return detail
 
     def getNow(self):
         return self.now
@@ -1740,19 +1744,24 @@ class glancesScreen:
         elif self.pressedkey == 120:
             # 'x' > Delete finished warning and critical logs
             logs.clean(critical=True)
-        elif self.pressedkey == curses.KEY_DOWN and self.process_highlight < self.processcount['total']:
+        elif self.pressedkey == curses.KEY_DOWN and \
+             self.process_highlight < self.processcount['total'] and \
+             not self.process_detail and not self.help_tag:
             # DOWN: Scroll down through the process list
             self.process_highlight += 1
             screen_y = self.screen.getmaxyx()[0]
             if (self.process_highlight >= (self.processcount2display / 2)):
                 self.process_scroll += 1
-        elif self.pressedkey == curses.KEY_UP and self.process_highlight > 0:
+        elif self.pressedkey == curses.KEY_UP and \
+             self.process_highlight > 0 and \
+             not self.process_detail and not self.help_tag:
             # UP: Scroll up through the process list
             self.process_highlight -= 1
             screen_y = self.screen.getmaxyx()[0]
             if (self.process_highlight >= (self.processcount2display / 2) - 1):
                 self.process_scroll -= 1
-        elif self.pressedkey == curses.KEY_LEFT:
+        elif self.pressedkey == curses.KEY_LEFT and \
+             not self.process_detail and not self.help_tag:
             # LEFT: Begin of the process list
             self.process_highlight  = 0
             self.process_scroll = 0
@@ -1843,23 +1852,29 @@ class glancesScreen:
         countdown = Timer(self.__refresh_time)
         while not countdown.finished():
             # Getkey
-            if self.__catchKey() > -1:
-                # flush display
+            self.__catchKey()
+            if (self.pressedkey > -1):
+                # !!! No need to flush the stat when scrolling through process list...
+                # !!! Hight CPU consumption
+                # Flush all the display
                 self.flush(stats, cs_status=cs_status)
 
-            # Display the pad
-            screen_x = self.screen.getmaxyx()[1]
-            if self.process_detail:
-                # Display detail of the selected process
-                self.term_pad_process_detail.refresh(0, 0, 
-                                              self.process_y + 3, self.process_x, 
-                                              self.process_detail_ysize, screen_x - 1)                
-            else:
+            # Display the process pad
+            if not self.help_tag:
+                screen_x = self.screen.getmaxyx()[1]
+
                 # Display the processes list
                 if self.processcount2display != 0:
                     self.term_pad_process.refresh(self.process_scroll, 0, 
                                                   self.process_y + 3, self.process_x, 
                                                   self.process_y + 3 + self.processcount2display, screen_x - 1)
+
+                # And optionnaly the process detail
+                if self.process_detail:
+                    # Display detail of the selected process
+                    self.term_pad_process_detail.refresh(0, 0, 
+                                                  self.process_y + 5, self.process_x, 
+                                                  self.process_y + 12, screen_x - 1)                
 
             # Wait 100ms...
             curses.napms(100)
@@ -2664,7 +2679,19 @@ class glancesScreen:
 
             # ... else display
             if self.process_detail:
-                # Display process detail in the <pad>
+                # Display selected processes summary in the <pad>: self.term_pad_process
+                self.displayProcessSumary(processlist[self.process_highlight], 0, 
+                                    self.term_pad_process, 
+                                    process_x, process_name_x, core = core,
+                                    tag_pid = tag_pid, tag_uid = tag_uid,
+                                    tag_nice = tag_nice, tag_status = tag_status,
+                                    tag_proc_time = tag_proc_time, tag_io = tag_io)
+                
+                # Update the process2display value
+                # Only one item in the list
+                process2display = 1
+
+                # Display process detail in the <pad>: term_pad_process_detail
                 self.displayProcessDetail(processlist[self.process_highlight], processdetail, 
                                     self.term_pad_process_detail,
                                     process_x, process_name_x, core = core,
@@ -2672,9 +2699,10 @@ class glancesScreen:
                                     tag_nice = tag_nice, tag_status = tag_status,
                                     tag_proc_time = tag_proc_time, tag_io = tag_io)
             else:
-                # Display the processes list in the <pad>
+                # Display the processes list in the <pad>: self.term_pad_process
                 for process_cpt in range(0, len(processlist)):
-                    self.displayProcessSumary(processlist[process_cpt], process_cpt, self.term_pad_process, 
+                    self.displayProcessSumary(processlist[process_cpt], process_cpt, 
+                                        self.term_pad_process, 
                                         process_x, process_name_x, core = core,
                                         tag_pid = tag_pid, tag_uid = tag_uid,
                                         tag_nice = tag_nice, tag_status = tag_status,
@@ -2703,21 +2731,18 @@ class glancesScreen:
         Return the number of lines filled in the <pad>
         """
         
-        # On the first line display the process sumary 
-        self.displayProcessSumary(process, 0, pad, 
-                            process_x, process_name_x, core = core,
-                            tag_highlight = False,
-                            tag_pid = tag_pid, tag_uid = tag_uid,
-                            tag_nice = tag_nice, tag_status = tag_status,
-                            tag_proc_time = tag_proc_time, tag_io = tag_io)        
+        # No detail  
+        # !!! Display a warning message
+        if detail == None:
+            return 0
 
         # Then the extended (detail) information
-        pad.addnstr(1, 0,
+        pad.addnstr(0, 0,
                   "{0}".format(str(detail))
                   , 40)        
                         
         # Return the number of line in the <pad>
-        return 3
+        return 5
 
     def displayProcessSumary(self, process, line, pad,
                              process_x, process_name_x, core = 1,
