@@ -158,6 +158,9 @@ class Timer:
 
     def __init__(self, duration):
         self.started(duration)
+    
+    def __str__(self):
+        return str(self.target - time.time())
 
     def started(self, duration):
         self.target = time.time() + duration
@@ -3431,7 +3434,7 @@ class GlancesInstance():
     def __init__(self, refresh_time=1):
         self.timer = Timer(0)
         self.refresh_time = refresh_time
-
+        
     def __update__(self):
         # Never update more than 1 time per refresh_time
         if self.timer.finished():
