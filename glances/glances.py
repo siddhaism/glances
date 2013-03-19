@@ -3432,6 +3432,9 @@ class GlancesInstance():
     """
 
     def __init__(self, cached_time=1):
+        # cached_time is the minimum time interval between stats updates
+        # i.e. XML/RPC calls will not retrieve updated info until the time
+        # since last update is passed (will retrieve old cached info instead)
         self.timer = Timer(0)
         self.cached_time = cached_time
 
@@ -3439,7 +3442,7 @@ class GlancesInstance():
         # Never update more than 1 time per cached_time
         if self.timer.finished():
             stats.update()
-        self.timer = Timer(self.cached_time)
+            self.timer = Timer(self.cached_time)
 
     def init(self):
         # Return the Glances version
