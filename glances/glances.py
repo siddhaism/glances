@@ -19,7 +19,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 __appname__ = 'glances'
-__version__ = "1.6.1a"
+__version__ = "1.7a"
 __author__ = "Nicolas Hennion <nicolas@nicolargo.com>"
 __licence__ = "LGPL"
 
@@ -158,7 +158,7 @@ class Timer:
 
     def __init__(self, duration):
         self.started(duration)
-    
+
     def __str__(self):
         return str(self.target - time.time())
 
@@ -1453,7 +1453,7 @@ class glancesScreen:
 
         # Init main window
         self.term_window = self.screen.subwin(0, 0)
-        
+
         # Init the pad for process list (linemax, colmax)
         # !!! Init value: (linemax, colmax)
         self.term_pad_process = curses.newpad(1024, 1024)
@@ -1841,7 +1841,7 @@ class glancesScreen:
                                   network_count + diskio_count)
         log_count = self.displayLog(self.network_y + sensors_count + network_count +
                                     diskio_count + fs_count)
-        self.processcount2display = self.displayProcess(self.processcount, 
+        self.processcount2display = self.displayProcess(self.processcount,
                             processlist, processdetail, stats.getSortedBy(),
                             log_count=log_count, core=stats.getCore())
         self.displayCaption(cs_status=cs_status)
@@ -1862,7 +1862,7 @@ class glancesScreen:
             "Connected": Client is connected to the server
             "Disconnected": Client is disconnected from the server
         """
-                
+
         self.erase()
         self.display(stats, cs_status=cs_status)
 
@@ -1894,22 +1894,22 @@ class glancesScreen:
                 # And optionnaly the process detail
                 if self.process_detail:
                     # Display the selected processe summary
-                    self.term_pad_process.refresh(0, 0, 
-                                                  self.process_y + 3, self.process_x, 
+                    self.term_pad_process.refresh(0, 0,
+                                                  self.process_y + 3, self.process_x,
                                                   self.process_y + 3 + self.processcount2display, screen_x - 1)
 
                     # !!! Had to compute the y size of the pad
                     # Display detail of the selected process
-                    self.term_pad_process_detail.refresh(0, 0, 
-                                                  self.process_y + 5, self.process_x, 
+                    self.term_pad_process_detail.refresh(0, 0,
+                                                  self.process_y + 5, self.process_x,
                                                   self.process_y + 12, screen_x - 1)
                 else:
                     # Display the processes list
                     if self.processcount2display != 0:
-                        self.term_pad_process.refresh(self.process_scroll, 0, 
-                                                      self.process_y + 3, self.process_x, 
+                        self.term_pad_process.refresh(self.process_scroll, 0,
+                                                      self.process_y + 3, self.process_x,
                                                       self.process_y + 3 + self.processcount2display, screen_x - 1)
-                    
+
             # Wait 100ms...
             curses.napms(100)
 
@@ -2578,7 +2578,7 @@ class glancesScreen:
         else:
             return 0
 
-    def displayProcess(self, processcount, processlist, processdetail, 
+    def displayProcess(self, processcount, processlist, processdetail,
                        sortedby='', log_count=0, core=1):
         """
         Main function for displaying the processes information
@@ -2630,7 +2630,7 @@ class glancesScreen:
 
         # Processes
         if screen_y > self.process_y + 4 and screen_x > process_x + 49:
-                        
+
             # Display optionnal description for the process panel
             process2display = screen_y - self.process_y - log_count - 5
             if (self.process_scroll > 0) and not self.process_detail:
@@ -2638,8 +2638,8 @@ class glancesScreen:
                 self.term_window.addnstr(
                         self.process_y + 1, process_x + 10,
                         _('Show processes from {0} to {1}').format(
-                            str(self.process_scroll + 1), 
-                            str(self.process_scroll + process2display)), 
+                            str(self.process_scroll + 1),
+                            str(self.process_scroll + process2display)),
                         42)
 
             # Displayed information / window size
@@ -2743,19 +2743,19 @@ class glancesScreen:
             # ... else display
             if self.process_detail:
                 # Display selected processes summary in the <pad>: self.term_pad_process
-                self.displayProcessSumary(processlist[self.process_highlight], 0, 
-                                    self.term_pad_process, 
+                self.displayProcessSumary(processlist[self.process_highlight], 0,
+                                    self.term_pad_process,
                                     process_x, process_name_x, core = core,
                                     tag_pid = tag_pid, tag_uid = tag_uid,
                                     tag_nice = tag_nice, tag_status = tag_status,
                                     tag_proc_time = tag_proc_time, tag_io = tag_io)
-                
+
                 # Update the process2display value
                 # Only one item in the list
                 process2display = 1
 
                 # Display process detail in the <pad>: term_pad_process_detail
-                self.displayProcessDetail(processlist[self.process_highlight], processdetail, 
+                self.displayProcessDetail(processlist[self.process_highlight], processdetail,
                                     self.term_pad_process_detail,
                                     process_x, process_name_x, core = core,
                                     tag_pid = tag_pid, tag_uid = tag_uid,
@@ -2764,25 +2764,25 @@ class glancesScreen:
             else:
                 # Display the processes list in the <pad>: self.term_pad_process
                 for process_cpt in range(0, len(processlist)):
-                    self.displayProcessSumary(processlist[process_cpt], process_cpt, 
-                                        self.term_pad_process, 
+                    self.displayProcessSumary(processlist[process_cpt], process_cpt,
+                                        self.term_pad_process,
                                         process_x, process_name_x, core = core,
                                         tag_pid = tag_pid, tag_uid = tag_uid,
                                         tag_nice = tag_nice, tag_status = tag_status,
                                         tag_proc_time = tag_proc_time, tag_io = tag_io)
-                
+
 
         else:
             # No process to display
             return 0
-        
+
         # Return the number of processes to display
         return process2display
 
     def displayProcessDetail(self, process, detail, pad,
                              process_x, process_name_x, core = 1,
-                             tag_pid = False, tag_uid = False, 
-                             tag_nice = False, tag_status = False, 
+                             tag_pid = False, tag_uid = False,
+                             tag_nice = False, tag_status = False,
                              tag_proc_time = False, tag_io = False):
         """
         Display the <process> <detail> in the <pad>
@@ -2793,16 +2793,16 @@ class glancesScreen:
         Output
         Return the number of lines filled in the <pad>
         """
-        
-        # No detail  
+
+        # No detail
         if detail == None:
             pad.addnstr(0, 0,
                         _("The process no longer exists..."),
-                        40)                    
+                        40)
             return 1
 
         # Display the extended (detail) information
-        
+
         # !!! Need to add check for OS not equal Linux...
 
         # CPU
@@ -2813,17 +2813,17 @@ class glancesScreen:
                         len(detail['cpu_affinity']),
                         "cores" if (len(detail['cpu_affinity'])>1) else "core",
                         detail['cpu_affinity']),
-                    40)                    
+                    40)
         pad.addnstr(1, 0,
                     '    {0:>13} {1}'.format(
                         _("user time:"),
-                        detail['cpu_times'].user), 
-                    40)                    
+                        detail['cpu_times'].user),
+                    40)
         pad.addnstr(2, 0,
                     '    {0:>13} {1}'.format(
                         _("system time:"),
                         detail['cpu_times'].system),
-                    40)    
+                    40)
 
         # MEM
         pad.addnstr(4, 0,
@@ -2831,27 +2831,27 @@ class glancesScreen:
                         "MEM",
                         _("shared:"),
                         self.__autoUnit(detail['ext_memory_info'].shared)),
-                    40)                    
+                    40)
         pad.addnstr(5, 0,
                     '    {0:>13} {1}'.format(
                         _("text:"),
                         self.__autoUnit(detail['ext_memory_info'].text)),
-                    40)                    
+                    40)
         pad.addnstr(6, 0,
                     '    {0:>13} {1}'.format(
                         _("lib:"),
                         self.__autoUnit(detail['ext_memory_info'].lib)),
-                    40)                    
+                    40)
         pad.addnstr(7, 0,
                     '    {0:>13} {1}'.format(
                         _("data:"),
                         self.__autoUnit(detail['ext_memory_info'].data)),
-                    40)                    
+                    40)
         pad.addnstr(8, 0,
                     '    {0:>13} {1}'.format(
                         _("dirty:"),
                         self.__autoUnit(detail['ext_memory_info'].dirty)),
-                    40)                    
+                    40)
 
         # THREAD
         pad.addnstr(10, 0,
@@ -2859,20 +2859,20 @@ class glancesScreen:
                         "THREAD",
                         _("number:"),
                         detail['num_threads']),
-                    40)                    
-        
-                        
+                    40)
+
+
         # Return the number of line in the <pad>
         return 3
 
     def displayProcessSumary(self, process, line, pad,
                              process_x, process_name_x, core = 1,
                              tag_highlight = True,
-                             tag_pid = False, tag_uid = False, 
-                             tag_nice = False, tag_status = False, 
+                             tag_pid = False, tag_uid = False,
+                             tag_nice = False, tag_status = False,
                              tag_proc_time = False, tag_io = False):
         """
-        Display the <process> sumary on the y <line> of the <pad> 
+        Display the <process> sumary on the y <line> of the <pad>
         """
 
         screen_x = self.screen.getmaxyx()[1]
@@ -2993,7 +2993,7 @@ class glancesScreen:
         pad.addnstr(line, process_name_x,
                                       command, max_process_name,
                                       style)
-        
+
     def displayCaption(self, cs_status="None"):
         """
         Display the caption (bottom left)
