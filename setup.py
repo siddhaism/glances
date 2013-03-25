@@ -30,7 +30,6 @@ for mo in glob.glob('i18n/*/LC_MESSAGES/*.mo'):
 
 setup(
     name='Glances',
-<<<<<<< HEAD
     version='1.7a',
     download_url='https://s3.amazonaws.com/glances/glances-1.7a.tar.gz',
     url='https://github.com/nicolargo/glances',
