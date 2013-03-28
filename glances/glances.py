@@ -3872,6 +3872,7 @@ def printSyntax():
     print(_("\t-v\t\tDisplay the version and exit"))
     print(_("\t-y\t\tEnable the hddtemp module"))    
     print(_("\t-z\t\tDo not use the bold color attribute"))
+    print(_("\t-r\t\tDo not list processes (significant CPU use reduction)"))
 
 
 def end():
