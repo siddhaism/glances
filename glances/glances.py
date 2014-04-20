@@ -3191,8 +3191,10 @@ class glancesScreen:
         If error = True, then display a grab error message
         Return the number of interfaces
         """
+
         if not self.network_tag:
             return 0
+
         screen_x = self.screen.getmaxyx()[1]
         screen_y = self.screen.getmaxyx()[0]
 	self.networkDrop_y = offset_y
