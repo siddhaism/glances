@@ -1734,6 +1734,7 @@ class GlancesStats:
                                                     netstat['cumulative_tx'])
                         netstat['cx'] = netstat['rx'] + netstat['tx']
 
+			# drop in/out
 			netstat['dropin'] = self.network_new[net].dropin
 			netstat['dropout'] = self.network_new[net].dropout
                     except Exception:
