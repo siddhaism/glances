@@ -1733,6 +1733,9 @@ class GlancesStats:
                         netstat['cumulative_cx'] = (netstat['cumulative_rx'] +
                                                     netstat['cumulative_tx'])
                         netstat['cx'] = netstat['rx'] + netstat['tx']
+
+			netstat['dropin'] = self.network_new[net].dropin
+			netstat['dropout'] = self.network_new[net].dropout
                     except Exception:
                         continue
                     else:
@@ -2072,6 +2075,8 @@ class glancesScreen:
         self.mem_y = 2
         self.network_x = 0
         self.network_y = 7
+        self.networkDrop_x = 0
+        self.networkDrop_y = -1
         self.sensors_x = 0
         self.sensors_y = -1
         self.hddtemp_x = 0
@@ -2599,17 +2604,24 @@ class glancesScreen:
             self.displayMem(stats.getMem(), stats.getMemSwap(), processlist, cpu_offset)
             network_count = self.displayNetwork(stats.getNetwork(),
                                                 error=stats.network_error_tag)
+            networkDrop_count = self.displayNetworkDrop(stats.getNetwork(),
+                                                error=stats.network_error_tag,
+						offset_y=self.network_y + network_count)
             sensors_count = self.displaySensors(stats.getSensors(),
-                                                self.network_y + network_count)
+                                                self.network_y + network_count + networkDrop_count)
             hddtemp_count = self.displayHDDTemp(stats.getHDDTemp(),
-                                                self.network_y + network_count + sensors_count)
+                                                self.network_y + network_count + 
+						networkDrop_count + sensors_count)
             diskio_count = self.displayDiskIO(stats.getDiskIO(), offset_y=self.network_y +
-                                              sensors_count + network_count + hddtemp_count,
+                                              sensors_count + 
+					      network_count +  networkDrop_count + 
+					      hddtemp_count,
                                               error=stats.diskio_error_tag)
             fs_count = self.displayFs(stats.getFs(), self.network_y + sensors_count +
-                                      network_count + diskio_count + hddtemp_count)
+                                      network_count + networkDrop_count + diskio_count + 
+				      hddtemp_count)
             log_count = self.displayLog(self.network_y + sensors_count + network_count +
-                                        diskio_count + fs_count + hddtemp_count)
+                                        networkDrop_count + diskio_count + fs_count + hddtemp_count)
             self.displayProcess(processcount, processlist, stats.getSortedBy(),
                                 log_count=log_count, core=stats.getCore(), cs_status=cs_status)
             self.displayCaption(cs_status=cs_status)
@@ -3091,7 +3103,6 @@ class glancesScreen:
                                          format(_(rx_column_name), '>5'), 5)
                 self.term_window.addnstr(self.network_y, self.network_x + 18,
                                          format(_(tx_column_name), '>5'), 5)
-
             if error:
                 # If there is a grab error
                 self.term_window.addnstr(self.network_y + 1, self.network_x,
@@ -3170,6 +3181,78 @@ class glancesScreen:
                         self.term_window.addnstr(self.network_y + net_count,
                                                  self.network_x + 16,
                                                  format(cx, '>7'), 7)
+            return net_count +2
+        return 0
+
+    def displayNetworkDrop(self, network, error=False, offset_y=0):
+        """
+        Display the network interface bitrate
+        If error = True, then display a grab error message
+        Return the number of interfaces
+        """
+        if not self.network_tag:
+            return 0
+        screen_x = self.screen.getmaxyx()[1]
+        screen_y = self.screen.getmaxyx()[0]
+	self.networkDrop_y = offset_y
+        if screen_y > self.networkDrop_y + 3 and screen_x > self.networkDrop_x + 28:
+            self.term_window.addnstr(self.networkDrop_y, self.networkDrop_x,
+                                     _("N/W Drop"), 11, self.title_color if
+                                     self.hascolors else curses.A_UNDERLINE)
+
+            dropin_column_name = "In"
+            dropout_column_name = "Out"
+            if not self.network_stats_cumulative:
+                dropin_column_name += "/s"
+                dropout_column_name += "/s"
+            self.term_window.addnstr(self.networkDrop_y, self.networkDrop_x + 10,
+                                     format(_(dropin_column_name), '>5'), 5)
+            self.term_window.addnstr(self.networkDrop_y, self.networkDrop_x + 18,
+                                     format(_(dropout_column_name), '>5'), 5)
+            if error:
+                # If there is a grab error
+                self.term_window.addnstr(self.networkDrop_y + 1, self.networkDrop_x,
+                                         _("Cannot grab data..."), 20)
+                return 3
+            elif not network:
+                # or no data to display...
+                self.term_window.addnstr(self.networkDrop_y + 1, self.networkDrop_x,
+                                         _("Compute data..."), 15)
+                return 3
+
+            # Adapt the maximum interface to the screen
+            net_max = min(screen_y - self.networkDrop_y - 3, len(network))
+            net_count = 0
+            for i in range(0, net_max):
+                elapsed_time = max(1, self.__refresh_time)
+
+                # network interface name
+                #~ ifname = network[i]['interface_name'].encode('ascii', 'ignore').split(':')[0]
+                ifname = network[i]['interface_name'].split(':')[0]
+
+                if (ifname not in limits.getHide('NETWORK_HIDE')):
+                    net_count += 1
+
+                    if len(ifname) > 8:
+                        ifname = '_' + ifname[-8:]
+                    self.term_window.addnstr(self.networkDrop_y + net_count,
+                                             self.networkDrop_x, ifname, 8)
+
+		    # drop in/out packets
+                    dropin_per_sec = self.__autoUnit(network[i]['dropin'] // elapsed_time)
+                    dropout_per_sec = self.__autoUnit(network[i]['dropout'] // elapsed_time)
+
+                    dropin = dropin_per_sec
+                    dropout = dropout_per_sec
+
+                    # dropin/s
+                    self.term_window.addnstr(self.networkDrop_y + net_count,
+                                             self.networkDrop_x + 8,
+                                             format(dropin, '>7'), 7)
+                    # dropout/s
+                    self.term_window.addnstr(self.networkDrop_y + net_count,
+                                             self.networkDrop_x + 16,
+                                             format(dropout, '>7'), 7)
             return net_count +2
         return 0
 
